@@ -83,6 +83,7 @@ Job fields: `id, session_id, status (queued|running|succeeded|failed), requested
 
 | Method & path | Query | Returns |
 |---|---|---|
+| `POST /admin/db/migrate` | | creates/updates the schema from the bundled SQL (idempotent) |
 | `GET /admin/overview` | | counts of devices, maps, map bytes, sessions, keyframes, pending merges |
 | `GET /admin/network` | `hours` (default 24) | totals (requests, 4xx/5xx, p50/p95/p99/avg ms, bytes in/out), by route, by region, by country, per hour |
 | `GET /admin/storage` | | bucket bytes/objects total and per prefix (cached 10 min) |

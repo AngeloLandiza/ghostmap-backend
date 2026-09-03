@@ -28,7 +28,7 @@ Full endpoint reference: [docs/API.md](docs/API.md).
 ```bash
 npm install
 cp .env.example .env            # fill in at least AUTH_JWT_SECRET, ADMIN_API_KEY, CLIENT_ACCESS_KEYS, DATABASE_URL
-npm run db:migrate              # creates the tables in Neon
+npm run db:migrate              # creates the tables in Neon (or POST /admin/db/migrate on a deployment)
 npm run dev                     # http://localhost:3000
 npm test                        # unit tests (no database needed)
 ADMIN_API_KEY=… CLIENT_ACCESS_KEY=… scripts/smoke.sh http://localhost:3000
