@@ -20,7 +20,7 @@ function record(c: Parameters<MiddlewareHandler>[0], durationMs: number): void {
     route: c.req.routePath || new URL(c.req.url).pathname,
     status: c.res.status,
     durationMs,
-    bytesIn: Number(c.req.header('content-length') ?? 0),
+    bytesIn: Number(c.req.header('x-request-bytes') ?? c.req.header('content-length') ?? 0),
     bytesOut: Number(c.res.headers.get('content-length') ?? 0),
     region: process.env.VERCEL_REGION ?? 'local',
     country: c.req.header('x-vercel-ip-country') ?? null,
