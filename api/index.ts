@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
     headers.delete('content-length')
     headers.set('x-request-bytes', String(body.length))
   }
-  const request = new Request(`${proto}://${host}${req.url ?? '/'}`, { method, headers, body })
+  const request = new Request(`${proto}://${host}${req.url ?? '/'}`, { method, headers, body: body ? new Uint8Array(body) : undefined })
   const response = await app.fetch(request)
   res.statusCode = response.status
   response.headers.forEach((value, key) => {
