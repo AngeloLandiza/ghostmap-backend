@@ -9,7 +9,11 @@ const schema = z.object({
   WORKER_API_KEY: z.string().optional(),
   CRON_SECRET: z.string().optional(),
   ALLOWED_ORIGINS: z.string().default(''),
-  DATABASE_URL: z.string().url(),
+  // Any of these may carry the Neon connection string (Vercel's Neon integration names them with a prefix).
+  DATABASE_URL: z.string().optional(),
+  DATABASE_POSTGRES_URL: z.string().optional(),
+  POSTGRES_URL: z.string().optional(),
+  DATABASE_DATABASE_URL: z.string().optional(),
   GCP_PROJECT_ID: z.string().optional(),
   GCS_BUCKET: z.string().optional(),
   GCP_SA_KEY_B64: z.string().optional(),
@@ -38,6 +42,14 @@ export function env(): Env {
   }
   cached = parsed.data
   return cached
+}
+
+/** The Postgres connection string from whichever variable the deployment provides. */
+export function databaseUrl(): string {
+  const e = env()
+  const url = e.DATABASE_URL ?? e.DATABASE_POSTGRES_URL ?? e.POSTGRES_URL ?? e.DATABASE_DATABASE_URL
+  if (!url) throw new Error('Invalid environment: DATABASE_URL (or DATABASE_POSTGRES_URL / POSTGRES_URL) is required')
+  return url
 }
 
 export function clientAccessKeys(): string[] {

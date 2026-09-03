@@ -21,6 +21,12 @@ export const usageRecorder: MiddlewareHandler = async (c, next) => {
     role: principal?.role ?? null,
     deviceId: principal?.deviceId ?? null,
   }
-  const write = db().insert(schema.apiUsage).values(row).then(() => undefined).catch((e) => console.error('usage insert failed', e))
+  let write: Promise<void>
+  try {
+    write = db().insert(schema.apiUsage).values(row).then(() => undefined).catch((e) => console.error('usage insert failed', e))
+  } catch (e) {
+    console.error('usage recorder skipped', e)
+    return
+  }
   try { waitUntil(write) } catch { await write }
 }
