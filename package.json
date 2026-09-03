@@ -1,0 +1,36 @@
+{
+  "name": "ghostmap-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ghostmap API: local-first room maps synced to Google Cloud Storage, collaborative sessions over Ably, admin monitoring to New Relic. Runs on Vercel.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "tsx watch src/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "smoke": "bash scripts/smoke.sh",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.9.0",
+    "@google-cloud/storage": "^7.14.0",
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.1",
+    "@neondatabase/serverless": "^0.10.4",
+    "@vercel/functions": "^1.5.0",
+    "ably": "^2.5.0",
+    "drizzle-orm": "^0.36.4",
+    "google-auth-library": "^9.15.0",
+    "hono": "^4.6.13",
+    "jose": "^5.9.6",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
