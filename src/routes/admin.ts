@@ -10,9 +10,13 @@ import { bucketStats, isGcsConfigured } from '../lib/gcs.js'
 import { gcpHealth, listSkuPrices, queryCosts } from '../lib/gcp.js'
 import { isNewRelicConfigured, newRelicHealth, sendEvents, sendMetrics, type NRMetric } from '../lib/newrelic.js'
 import { daysQuery, pricingQuery, windowQuery } from '../schemas.js'
+import { runMigrations } from '../db/migrate.js'
 
 export const admin = new Hono()
 admin.use('/admin/*', requireAuth('admin'))
+
+/** Creates/updates the database schema from the bundled SQL (idempotent). Run once after connecting the database. */
+admin.post('/admin/db/migrate', async (c) => c.json(await runMigrations()))
 
 admin.get('/admin/overview', async (c) => {
   const [counts] = await db().execute(sql`

@@ -1,8 +1,6 @@
-// Applies src/db/migrations/*.sql in order using the Neon HTTP driver (one statement per request).
-// Reads DATABASE_URL (or DATABASE_POSTGRES_URL / POSTGRES_URL) from the environment, .env.local or .env.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { neon } from '@neondatabase/serverless'
+// CLI migration: reads DATABASE_URL (or the Vercel/Neon integration names) from the environment, .env.local or .env.
+import { existsSync, readFileSync } from 'node:fs'
+import { runMigrations } from '../src/db/migrate.js'
 
 for (const file of ['.env.local', '.env']) {
   if (!existsSync(file)) continue
@@ -13,14 +11,6 @@ for (const file of ['.env.local', '.env']) {
 }
 const url = process.env.DATABASE_URL ?? process.env.DATABASE_POSTGRES_URL ?? process.env.POSTGRES_URL ?? process.env.DATABASE_DATABASE_URL
 if (!url) { console.error('DATABASE_URL (or DATABASE_POSTGRES_URL / POSTGRES_URL) is required'); process.exit(1) }
-const sql = neon(url)
-const dir = join(process.cwd(), 'src/db/migrations')
-for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
-  const statements = readFileSync(join(dir, file), 'utf8')
-    .split(/;\s*\n/)
-    .map((s) => s.replace(/--.*$/gm, '').trim())
-    .filter(Boolean)
-  for (const statement of statements) await sql(statement)
-  console.log(`applied ${file} (${statements.length} statements)`)
-}
+const result = await runMigrations(url)
+for (const a of result.applied) console.log(`applied ${a.name} (${a.statements} statements)`)
 console.log('migrations complete')
