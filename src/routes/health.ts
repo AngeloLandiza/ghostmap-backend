@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { envIssues } from '../env.js'
 
 export const health = new Hono()
 
@@ -8,5 +9,6 @@ health.get('/health', (c) => {
   const missing = required.filter((k) => !process.env[k])
   const hasDb = Boolean(process.env.DATABASE_URL ?? process.env.DATABASE_POSTGRES_URL ?? process.env.POSTGRES_URL ?? process.env.DATABASE_DATABASE_URL)
   if (!hasDb) missing.push('DATABASE_URL')
-  return c.json({ ok: true, configured: missing.length === 0, missing_env: missing, service: 'ghostmap-backend', version: process.env.APP_VERSION ?? '0.1.0', region: process.env.VERCEL_REGION ?? 'local', time: new Date().toISOString() })
+  const issues = envIssues()
+  return c.json({ ok: true, configured: missing.length === 0 && issues.length === 0, missing_env: missing, env_issues: issues, service: 'ghostmap-backend', version: process.env.APP_VERSION ?? '0.1.0', region: process.env.VERCEL_REGION ?? 'local', time: new Date().toISOString() })
 })

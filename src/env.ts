@@ -23,7 +23,7 @@ const schema = z.object({
   ABLY_API_KEY: z.string().optional(),
   NEW_RELIC_LICENSE_KEY: z.string().optional(),
   NEW_RELIC_ACCOUNT_ID: z.string().optional(),
-  NEW_RELIC_REGION: z.enum(['US', 'EU']).default('US'),
+  NEW_RELIC_REGION: z.preprocess((v) => (typeof v === 'string' && v.trim().toUpperCase() === 'EU' ? 'EU' : 'US'), z.enum(['US', 'EU'])),
   VERCEL_REGION: z.string().optional(),
   VERCEL_ENV: z.string().optional(),
 })
@@ -33,9 +33,22 @@ export type Env = z.infer<typeof schema>
 let cached: Env | undefined
 
 /** Validated process environment. Throws with a readable message when a required variable is missing. */
+/** Empty strings (Vercel keeps empty variables) count as unset. */
+function rawEnv(): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(process.env)) out[k] = typeof v === 'string' && v.trim() === '' ? undefined : v
+  return out
+}
+
+/** Validation problems as `NAME: message` strings (never values); empty when the environment is valid. */
+export function envIssues(): string[] {
+  const parsed = schema.safeParse(rawEnv())
+  return parsed.success ? [] : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`)
+}
+
 export function env(): Env {
   if (cached) return cached
-  const parsed = schema.safeParse(process.env)
+  const parsed = schema.safeParse(rawEnv())
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
     throw new Error(`Invalid environment: ${issues}`)
