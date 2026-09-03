@@ -15,7 +15,7 @@ The API skeleton on Vercel: `/health`, `POST /v1/auth/token`, CORS for your web 
 2. **Create the Vercel project**: vercel.com → Add New → Project → import `AngeloLandiza/ghostmap-backend`. Framework preset **Other**, root directory `/`, build command empty, output directory empty (the `api/` folder is detected automatically). Node.js version 20 or 22 (Settings → General).
 3. **Environment variables** (Settings → Environment Variables, for Production and Preview): everything in `.env.example`. Start with `AUTH_JWT_SECRET`, `ADMIN_API_KEY`, `CLIENT_ACCESS_KEYS`, `WORKER_API_KEY`, `CRON_SECRET`, `ALLOWED_ORIGINS`, `DATABASE_URL` (guide 2). Add the GCP, Ably and New Relic variables as you complete guides 3–7.
 4. **Deploy**: Vercel deploys on every push to `main`. Or from the CLI: `npm i -g vercel && vercel link && vercel --prod`.
-5. **Cron**: `vercel.json` schedules `GET /admin/newrelic/push` every 10 minutes. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically once `CRON_SECRET` exists in the project's env (Hobby plan: crons run at most once a day — change the schedule to `0 * * * *` or upgrade).
+5. **Cron**: `vercel.json` schedules `GET /admin/newrelic/push` once a day (`0 8 * * *`), because the Hobby plan allows only daily crons — any more frequent schedule (`0 * * * *`, `*/10 * * * *`) is rejected at deploy time. On Pro, change the schedule to `*/10 * * * *` for 10-minute snapshots. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically once `CRON_SECRET` exists in the project's env.
 6. **Verify**:
    ```bash
    curl https://<your-app>.vercel.app/health

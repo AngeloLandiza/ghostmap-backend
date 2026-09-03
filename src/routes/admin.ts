@@ -98,7 +98,7 @@ admin.get('/admin/health', async (c) => {
 })
 
 /**
- * Push network, storage, cost and inventory metrics to New Relic. Called by Vercel Cron every 10 minutes
+ * Push network, storage, cost and inventory metrics to New Relic. Called once a day by Vercel Cron
  * (Authorization: Bearer CRON_SECRET) or manually with the admin key.
  */
 async function pushToNewRelic() {

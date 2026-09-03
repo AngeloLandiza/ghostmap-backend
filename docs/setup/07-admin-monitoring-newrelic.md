@@ -7,7 +7,7 @@ Admin-only endpoints (`ADMIN_API_KEY`):
 - `GET /admin/costs?days=30` — actual GCP spend per day and service from the BigQuery billing export.
 - `GET /admin/pricing?service=storage&region=us-east1` — list prices (tiered USD) from the Cloud Billing Catalog API.
 - `GET /admin/health` — deep checks of Postgres, GCP credentials, Ably and New Relic.
-- `GET|POST /admin/newrelic/push` — pushes all of the above as New Relic metrics plus a `GhostmapSnapshot` event; Vercel Cron runs it every 10 minutes.
+- `GET|POST /admin/newrelic/push` — pushes all of the above as New Relic metrics plus a `GhostmapSnapshot` event; Vercel Cron runs it once a day (Hobby-plan limit; see guide 1).
 
 ## A. GCP pricing (Cloud Billing Catalog API)
 ```bash

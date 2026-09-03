@@ -90,6 +90,6 @@ Job fields: `id, session_id, status (queued|running|succeeded|failed), requested
 | `GET /admin/pricing` | `service=storage\|run\|bigquery`, `region` | Cloud Billing Catalog SKUs with tiered USD prices (cached 24 h) |
 | `GET /admin/sessions`, `GET /admin/usage/recent`, `GET /v1/devices` | | inventories |
 | `GET /admin/health` | | deep checks: database, GCP credentials, Ably, New Relic |
-| `GET|POST /admin/newrelic/push` | | pushes metrics + a `GhostmapSnapshot` event to New Relic; run by Vercel Cron every 10 min |
+| `GET|POST /admin/newrelic/push` | | pushes metrics + a `GhostmapSnapshot` event to New Relic; run daily by Vercel Cron |
 
 Metrics sent (all prefixed `ghostmap.`): `api.requests`, `api.errors.server`, `api.errors.client`, `api.latency.p50_ms|p95_ms|p99_ms`, `api.bytes.in|out`, `api.route.requests|p95_ms` (attributes `method`, `route`), `api.region.requests`, `api.country.requests`, `inventory.*`, `gcs.bytes`, `gcs.objects`, `gcs.prefix.bytes`, `gcs.estimated_monthly_usd`, `gcp.cost.30d_usd`, `gcp.cost.service_30d_usd` (attribute `gcp_service`), `gcp.cost.latest_day_usd`.
