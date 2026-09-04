@@ -36,7 +36,7 @@ let cached: Env | undefined
 /** Empty strings (Vercel keeps empty variables) count as unset. */
 function rawEnv(): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {}
-  for (const [k, v] of Object.entries(process.env)) out[k] = typeof v === 'string' && v.trim() === '' ? undefined : v
+  for (const [k, v] of Object.entries(process.env)) out[k] = typeof v === 'string' ? (v.trim() === '' ? undefined : v.trim()) : v
   return out
 }
 

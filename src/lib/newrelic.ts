@@ -26,7 +26,8 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; status: 
     headers: { 'Content-Type': 'application/json', 'Api-Key': key },
     body: JSON.stringify(body),
   })
-  return { ok: res.ok, status: res.status, detail: res.ok ? undefined : (await res.text()).slice(0, 300) }
+  const text = (await res.text()).slice(0, 300)
+  return { ok: res.ok, status: res.status, detail: res.ok ? undefined : `HTTP ${res.status}${text ? `: ${text}` : ''} — for the Metric/Event APIs use an INGEST-LICENSE key (not a User key) and make sure NEW_RELIC_REGION matches the account's data center` }
 }
 
 /** Sends dimensional metrics through the New Relic Metric API. */

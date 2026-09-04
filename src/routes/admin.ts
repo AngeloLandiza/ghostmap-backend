@@ -10,6 +10,13 @@ import { bucketStats, isGcsConfigured } from '../lib/gcs.js'
 import { gcpHealth, listSkuPrices, queryCosts } from '../lib/gcp.js'
 import { isNewRelicConfigured, newRelicHealth, sendEvents, sendMetrics, type NRMetric } from '../lib/newrelic.js'
 import { daysQuery, pricingQuery, windowQuery } from '../schemas.js'
+
+/** Drizzle's Neon HTTP driver returns `{ rows }` from raw `execute()`; normalize to an array of rows. */
+function rowsOf(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result as Record<string, unknown>[]
+  const r = (result as { rows?: unknown }).rows
+  return Array.isArray(r) ? (r as Record<string, unknown>[]) : []
+}
 import { runMigrations } from '../db/migrate.js'
 
 export const admin = new Hono()
@@ -19,21 +26,21 @@ admin.use('/admin/*', requireAuth('admin'))
 admin.post('/admin/db/migrate', async (c) => c.json(await runMigrations()))
 
 admin.get('/admin/overview', async (c) => {
-  const [counts] = await db().execute(sql`
+  const [counts] = rowsOf(await db().execute(sql`
     SELECT (SELECT count(*) FROM devices) AS devices,
            (SELECT count(*) FROM maps WHERE status <> 'deleted') AS maps,
            (SELECT coalesce(sum(size_bytes),0) FROM maps WHERE status = 'saved') AS map_bytes,
            (SELECT count(*) FROM sessions WHERE status = 'active') AS active_sessions,
            (SELECT count(*) FROM sessions) AS sessions,
            (SELECT count(*) FROM keyframes) AS keyframes,
-           (SELECT count(*) FROM merge_jobs WHERE status IN ('queued','running')) AS pending_merges`) as unknown as [Record<string, unknown>]
+           (SELECT count(*) FROM merge_jobs WHERE status IN ('queued','running')) AS pending_merges`))
   return c.json({ overview: counts, region: env().VERCEL_REGION ?? 'local', version: env().APP_VERSION })
 })
 
 /** Networking stats from api_usage: volume, latency percentiles, bytes, by route, region and country. */
 export async function networkStats(hours: number) {
   const since = new Date(Date.now() - hours * 3600 * 1000)
-  const totals = (await db().execute(sql`
+  const totals = rowsOf(await db().execute(sql`
     SELECT count(*)::int AS requests,
            count(*) FILTER (WHERE status >= 500)::int AS server_errors,
            count(*) FILTER (WHERE status >= 400 AND status < 500)::int AS client_errors,
@@ -43,23 +50,23 @@ export async function networkStats(hours: number) {
            coalesce(avg(duration_ms),0) AS avg_ms,
            coalesce(sum(bytes_in),0)::bigint AS bytes_in,
            coalesce(sum(bytes_out),0)::bigint AS bytes_out
-    FROM api_usage WHERE ts >= ${since}`)) as unknown as Record<string, unknown>[]
-  const byRoute = (await db().execute(sql`
+    FROM api_usage WHERE ts >= ${since}`))
+  const byRoute = rowsOf(await db().execute(sql`
     SELECT method, route, count(*)::int AS requests,
            coalesce(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms),0) AS p95_ms,
            coalesce(avg(duration_ms),0) AS avg_ms,
            count(*) FILTER (WHERE status >= 500)::int AS errors,
            coalesce(sum(bytes_in),0)::bigint AS bytes_in, coalesce(sum(bytes_out),0)::bigint AS bytes_out
-    FROM api_usage WHERE ts >= ${since} GROUP BY method, route ORDER BY requests DESC LIMIT 50`)) as unknown as Record<string, unknown>[]
-  const byRegion = (await db().execute(sql`
+    FROM api_usage WHERE ts >= ${since} GROUP BY method, route ORDER BY requests DESC LIMIT 50`))
+  const byRegion = rowsOf(await db().execute(sql`
     SELECT coalesce(region,'unknown') AS region, count(*)::int AS requests, coalesce(avg(duration_ms),0) AS avg_ms
-    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 2 DESC`)) as unknown as Record<string, unknown>[]
-  const byCountry = (await db().execute(sql`
+    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 2 DESC`))
+  const byCountry = rowsOf(await db().execute(sql`
     SELECT coalesce(country,'unknown') AS country, count(*)::int AS requests
-    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 2 DESC LIMIT 30`)) as unknown as Record<string, unknown>[]
-  const perHour = (await db().execute(sql`
+    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 2 DESC LIMIT 30`))
+  const perHour = rowsOf(await db().execute(sql`
     SELECT date_trunc('hour', ts) AS hour, count(*)::int AS requests, coalesce(sum(bytes_in+bytes_out),0)::bigint AS bytes
-    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 1`)) as unknown as Record<string, unknown>[]
+    FROM api_usage WHERE ts >= ${since} GROUP BY 1 ORDER BY 1`))
   return { window_hours: hours, since: since.toISOString(), totals: totals[0] ?? {}, by_route: byRoute, by_region: byRegion, by_country: byCountry, per_hour: perHour }
 }
 
@@ -128,12 +135,12 @@ async function pushToNewRelic() {
   for (const r of net.by_region) metrics.push({ name: 'ghostmap.api.region.requests', type: 'gauge', value: num(r.requests), attributes: { region: String(r.region), window: '1h' } })
   for (const r of net.by_country) metrics.push({ name: 'ghostmap.api.country.requests', type: 'gauge', value: num(r.requests), attributes: { country: String(r.country), window: '1h' } })
 
-  const [inv] = (await db().execute(sql`
+  const [inv] = rowsOf(await db().execute(sql`
     SELECT (SELECT count(*) FROM devices)::int AS devices, (SELECT count(*) FROM maps WHERE status='saved')::int AS maps,
            (SELECT coalesce(sum(size_bytes),0) FROM maps WHERE status='saved')::bigint AS map_bytes,
            (SELECT count(*) FROM sessions WHERE status='active')::int AS active_sessions,
            (SELECT count(*) FROM keyframes)::int AS keyframes,
-           (SELECT count(*) FROM merge_jobs WHERE status IN ('queued','running'))::int AS pending_merges`)) as unknown as Record<string, unknown>[]
+           (SELECT count(*) FROM merge_jobs WHERE status IN ('queued','running'))::int AS pending_merges`))
   for (const [k, v] of Object.entries(inv ?? {})) metrics.push({ name: `ghostmap.inventory.${k}`, type: 'gauge', value: num(v) })
 
   let storage: Awaited<ReturnType<typeof bucketStats>> | undefined
