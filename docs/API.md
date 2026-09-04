@@ -71,7 +71,7 @@ A party is a session several phones and browsers share. It has an **invite code*
 | Method & path | Role | Body / query | Returns |
 |---|---|---|---|
 | `POST /v1/sessions` | device, user | `{ name, origin?: {type: "session-start"\|"marker", marker_id?}, base_map_id?, max_participants? }` | `201 { session, participants, channel, share_url }` |
-| `GET /v1/sessions` | device, client, user | `status`, `limit` | `{ sessions[] }` (filtered by visibility) |
+| `GET /v1/sessions` | device, client, user | `status`, `limit` | `{ sessions[] }` (filtered by visibility; each row also carries `participant_count` and `owner_name`) |
 | `GET /v1/sessions/by-code/:code` | any authenticated | | `{ session: { id, name, status, origin, invite_code, share_url, participant_count, max_participants, owner_name }, can_join, reason }` |
 | `POST /v1/sessions/join` | device, user | `{ code, kind?: "device"\|"viewer", display_name? }` | `{ session, participants, channel, share_url, me, realtime }` |
 | `GET /v1/sessions/:id` | device, client, user | | `{ session, participants, channel, share_url }` |
@@ -115,7 +115,7 @@ Job fields (the row as stored — camelCase): `id, sessionId, status (queued|run
 | Method & path | Query | Returns |
 |---|---|---|
 | `POST /admin/db/migrate` | | creates/updates the schema from the bundled SQL (idempotent) |
-| `GET /admin/overview` | | counts of devices, maps, map bytes, sessions, keyframes, pending merges |
+| `GET /admin/overview` | | counts of users, devices, maps, map bytes, sessions, keyframes, pending merges |
 | `GET /admin/network` | `hours` (default 24) | totals (requests, 4xx/5xx, p50/p95/p99/avg ms, bytes in/out), by route, by region, by country, per hour |
 | `GET /admin/storage` | | bucket bytes/objects total and per prefix (cached 10 min) |
 | `GET /admin/costs` | `days` (default 30) | BigQuery billing export: **actual** spend per day and service, totals (cached 1 h); 501 if not configured |

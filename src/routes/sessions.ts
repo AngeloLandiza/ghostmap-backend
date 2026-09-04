@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { zValidator } from '../lib/validate.js'
-import { and, asc, desc, eq, exists, gt, isNull, or, sql, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, gt, isNull, or, sql, type SQL, inArray } from 'drizzle-orm'
 import { db, schema } from '../db/client.js'
 import { requireAuth, type Principal } from '../lib/auth.js'
 import { canEndSession, canReadSession } from '../lib/access.js'
@@ -9,10 +9,7 @@ import { AppError, badRequest, forbidden, notFound, sessionEnded, sessionFull } 
 import { keyframeContentType, keyframeObjectPath, signDownload, signUpload, type KeyframeKind } from '../lib/gcs.js'
 import { newId } from '../lib/ids.js'
 import { recordUsageEvent } from '../lib/usageEvents.js'
-import {
-  generateInviteCode, isInviteCode, joinDecision, matchParticipant, normalizeInviteCode, pickColor, shareUrl,
-  type Identity, type ParticipantKind,
-} from '../lib/parties.js'
+import { generateInviteCode, isInviteCode, joinDecision, matchParticipant, normalizeInviteCode, pickColor, shareUrl, type Identity, type ParticipantKind, activeIdentities } from '../lib/parties.js'
 import { dashboardUrl } from '../env.js'
 import { createSession, joinSession, joinSessionById, keyframeQuery, keyframeUploadUrls, listQuery, registerKeyframes } from '../schemas.js'
 
@@ -238,8 +235,31 @@ sessions.get('/v1/sessions', requireAuth('device', 'client', 'user'), zValidator
   }
   const rows = await db().select().from(schema.sessions).where(conds.length ? and(...conds) : undefined)
     .orderBy(desc(schema.sessions.createdAt)).limit(q.limit)
-  return c.json({ sessions: rows })
+  return c.json({ sessions: await withListSummary(rows) })
 })
+
+/** Adds `participant_count` (distinct active identities) and `owner_name` to listed sessions in two batched queries. */
+async function withListSummary(rows: SessionRow[]) {
+  if (rows.length === 0) return []
+  const ids = rows.map((r) => r.id)
+  const allParticipants = await db().select().from(sp).where(inArray(sp.sessionId, ids))
+  const bySession = new Map<string, ParticipantRow[]>()
+  for (const row of allParticipants) {
+    const list = bySession.get(row.sessionId) ?? []
+    list.push(row)
+    bySession.set(row.sessionId, list)
+  }
+  const ownerIds = [...new Set(rows.map((r) => r.ownerUserId).filter((v): v is string => !!v))]
+  const owners = ownerIds.length
+    ? await db().select({ id: schema.users.id, name: schema.users.name }).from(schema.users).where(inArray(schema.users.id, ownerIds))
+    : []
+  const ownerName = new Map(owners.map((o) => [o.id, o.name]))
+  return rows.map((r) => ({
+    ...r,
+    participant_count: activeIdentities(bySession.get(r.id) ?? []).size,
+    owner_name: r.ownerUserId ? ownerName.get(r.ownerUserId) ?? null : null,
+  }))
+}
 
 /** Party summary for the `/join/:code` landing page — any authenticated role may look a code up. */
 sessions.get('/v1/sessions/by-code/:code', requireAuth('device', 'client', 'user'), async (c) => {

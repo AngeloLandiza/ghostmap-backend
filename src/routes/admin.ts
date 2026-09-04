@@ -31,7 +31,8 @@ admin.post('/admin/db/migrate', async (c) => c.json(await runMigrations()))
 
 admin.get('/admin/overview', async (c) => {
   const [counts] = rowsOf(await db().execute(sql`
-    SELECT (SELECT count(*) FROM devices) AS devices,
+    SELECT (SELECT count(*) FROM users) AS users,
+           (SELECT count(*) FROM devices) AS devices,
            (SELECT count(*) FROM maps WHERE status <> 'deleted') AS maps,
            (SELECT coalesce(sum(size_bytes),0) FROM maps WHERE status = 'saved') AS map_bytes,
            (SELECT count(*) FROM sessions WHERE status = 'active') AS active_sessions,
