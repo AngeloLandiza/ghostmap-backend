@@ -12,5 +12,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["api", "src", "test", "scripts"]
+  "include": ["api", "src", "test", "scripts", "vitest.config.ts", "vitest.e2e.config.ts"]
 }

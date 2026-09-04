@@ -35,9 +35,10 @@ npm run db:migrate              # creates the tables in Neon (or POST /admin/db/
 npm run dev                     # http://localhost:3000
 npm test                        # unit tests (no database needed)
 ADMIN_API_KEY=… CLIENT_ACCESS_KEY=… scripts/smoke.sh http://localhost:3000
+E2E_BASE_URL=… E2E_ADMIN_API_KEY=… E2E_CLIENT_ACCESS_KEY=… npm run test:e2e   # against a real deployment; see docs/TESTING.md
 ```
 
-Deploy: push to GitHub and import the repo in Vercel (framework preset "Other"); set the environment variables from `.env.example`; every push to `main` deploys. Details in the setup guides.
+Deploy: push to GitHub and import the repo in Vercel (framework preset "Other"); set the environment variables from `.env.example`; every push to `main` deploys. Details in the setup guides. `.github/workflows/ci.yml` runs the unit tests on every push/PR and the E2E suite whenever `E2E_BASE_URL`, `E2E_ADMIN_API_KEY` and `E2E_CLIENT_ACCESS_KEY` are set as repository secrets — see [docs/TESTING.md](docs/TESTING.md).
 
 ## Stack
 
@@ -55,5 +56,7 @@ src/lib/              auth (JWT), google (id tokens), access (ownership), partie
 src/db/               drizzle schema, Neon client, SQL migrations
 src/schemas.ts        request validation
 scripts/              migrate.ts, smoke.sh
-docs/                 API.md and setup guides
+test/                 unit tests (vitest.config.ts) — no database, run by `npm test`
+test/e2e/             E2E suite (vitest.e2e.config.ts) against a live deployment — run by `npm run test:e2e`
+docs/                 API.md, TESTING.md and setup guides
 ```

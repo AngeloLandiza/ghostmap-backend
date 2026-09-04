@@ -9,6 +9,7 @@
     "dev": "tsx watch src/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:sync": "tsx scripts/sync-migrations.ts",
     "smoke": "bash scripts/smoke.sh",

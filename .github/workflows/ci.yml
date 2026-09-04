@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Typecheck + unit tests: no database, no network, no secrets. Always runs.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # GitHub Actions does not expose `secrets` inside a job-level `if:`, only inside a step's `if:`/`env:`
+  # (see docs/TESTING.md). This job's only purpose is to turn the three secrets into a job output the
+  # `e2e` job below can gate on.
+  e2e-check:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          HAS_BASE_URL: ${{ secrets.E2E_BASE_URL != '' }}
+          HAS_ADMIN_KEY: ${{ secrets.E2E_ADMIN_API_KEY != '' }}
+          HAS_CLIENT_KEY: ${{ secrets.E2E_CLIENT_ACCESS_KEY != '' }}
+        run: |
+          if [ "$HAS_BASE_URL" = "true" ] && [ "$HAS_ADMIN_KEY" = "true" ] && [ "$HAS_CLIENT_KEY" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # E2E against a live deployment (PLAN §6): only when all three repo/organization secrets are set.
+  # A workflow run triggered by a pull request from a fork never sees secrets, so this is skipped there too.
+  e2e:
+    needs: e2e-check
+    if: needs.e2e-check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_ADMIN_API_KEY: ${{ secrets.E2E_ADMIN_API_KEY }}
+          E2E_CLIENT_ACCESS_KEY: ${{ secrets.E2E_CLIENT_ACCESS_KEY }}
