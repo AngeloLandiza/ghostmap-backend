@@ -1,6 +1,7 @@
 import Ably from 'ably'
 import { env } from '../env.js'
 import { notConfigured } from './errors.js'
+import { recordUsageEvent } from './usageEvents.js'
 
 let rest: Ably.Rest | undefined
 
@@ -26,6 +27,7 @@ export async function createTokenRequest(opts: { clientId: string; sessionId?: s
     : opts.sessionId
       ? { [sessionChannel(opts.sessionId)]: opts.publish ? ['publish', 'subscribe', 'presence', 'history'] : ['subscribe', 'presence', 'history'] }
       : { 'session:*': ['subscribe', 'history'] }
+  recordUsageEvent('ably_token', 1, 0)
   return client().auth.createTokenRequest({
     clientId: opts.clientId,
     capability: JSON.stringify(capability),
@@ -35,6 +37,10 @@ export async function createTokenRequest(opts: { clientId: string; sessionId?: s
 
 /** Server-side publish (used when keyframes are registered through the API). */
 export async function publish(sessionId: string, name: string, data: unknown): Promise<void> {
+  // Ably bills the publish plus one delivery per subscriber; the subscriber count is added in costs/usage.ts.
+  let bytes = 0
+  try { bytes = JSON.stringify(data ?? null).length } catch { bytes = 0 }
+  recordUsageEvent('ably_publish', 1, bytes)
   await client().channels.get(sessionChannel(sessionId)).publish(name, data)
 }
 

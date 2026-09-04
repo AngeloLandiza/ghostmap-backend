@@ -135,3 +135,12 @@ export const statsCache = pgTable('stats_cache', {
   value: jsonb('value').notNull().$type<unknown>(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+/** PLAN §3: counters for the billable things `api_usage` cannot see (signed URLs, publishes, BigQuery jobs). */
+export const usageEvents = pgTable('usage_events', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+  kind: text('kind').notNull(),
+  count: integer('count').notNull().default(0),
+  bytes: bigint('bytes', { mode: 'number' }).notNull().default(0),
+})

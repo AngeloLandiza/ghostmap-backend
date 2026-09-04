@@ -167,4 +167,18 @@ CREATE INDEX IF NOT EXISTS session_participants_user_idx ON session_participants
 -- false when the pose is still in the device's own frame (no marker seen yet).
 ALTER TABLE keyframes ADD COLUMN IF NOT EXISTS aligned boolean NOT NULL DEFAULT true;
 ` },
+  { name: '0003_usage_events.sql', sql: `-- Phase 2 §3: counters behind the cost estimates. One row per kind per request, written after the
+-- response through waitUntil, so the table stays small and the write is never on the critical path.
+-- Every statement is idempotent.
+
+CREATE TABLE IF NOT EXISTS usage_events (
+  id bigserial PRIMARY KEY,
+  ts timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,
+  count int NOT NULL DEFAULT 0,
+  bytes bigint NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS usage_events_ts_idx ON usage_events (ts DESC);
+CREATE INDEX IF NOT EXISTS usage_events_kind_ts_idx ON usage_events (kind, ts DESC);
+` },
 ]

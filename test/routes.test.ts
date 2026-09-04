@@ -103,6 +103,55 @@ describe('routes (no database needed)', () => {
     })
   })
 
+  describe('admin cost endpoints (PLAN §3)', () => {
+    const adminHeaders = { Authorization: 'Bearer admin-key-1234' }
+
+    it('needs the admin key', async () => {
+      for (const path of ['/admin/costs/overview', '/admin/costs/usage', '/admin/costs/pricing', '/admin/costs/projection']) {
+        expect((await app.request(path)).status, path).toBe(401)
+        expect((await app.request(path, { headers: { Authorization: `Bearer ${tokens.device}` } })).status, path).toBe(403)
+        expect((await app.request(path, { headers: { Authorization: `Bearer ${tokens.client}` } })).status, path).toBe(403)
+      }
+    })
+
+    it('serves the price table without touching the database', async () => {
+      const res = await app.request('/admin/costs/pricing', { headers: adminHeaders })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.month_days).toBe(30)
+      expect(Array.isArray(body.pricing)).toBe(true)
+      expect(body.pricing.length).toBeGreaterThan(20)
+      for (const entry of body.pricing) {
+        expect(entry).toHaveProperty('unit_price_usd')
+        expect(entry).toHaveProperty('free_quota')
+        expect(entry).toHaveProperty('unit')
+        expect(entry).toHaveProperty('as_of')
+        expect(entry).toHaveProperty('source')
+      }
+      expect(Array.isArray(body.unverified_metrics)).toBe(true)
+    })
+
+    it('runs the projection from query parameters', async () => {
+      const res = await app.request('/admin/costs/projection?mappers=1&sessions_per_day=1&minutes_per_session=5&dashboard_views_per_day=0', { headers: adminHeaders })
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.params.mappers).toBe(1)
+      expect(body.params.minutes_per_session).toBe(5)
+      expect(body.params.keyframes_per_second).toBe(3)     // default kept
+      expect(body.grand_total_usd).toBeGreaterThan(0)      // the Apple membership is always billable
+      expect(Array.isArray(body.assumptions)).toBe(true)
+      expect(body.providers.some((p: { provider: string }) => p.provider === 'gcs')).toBe(true)
+    })
+
+    it('validates the projection and window parameters before doing any work', async () => {
+      expect((await app.request('/admin/costs/projection?mappers=lots', { headers: adminHeaders })).status).toBe(400)
+      expect((await app.request('/admin/costs/projection?mappers=-1', { headers: adminHeaders })).status).toBe(400)
+      expect((await app.request('/admin/costs/projection?jpeg_every_n=1.5', { headers: adminHeaders })).status).toBe(400)
+      expect((await app.request('/admin/costs/overview?days=0', { headers: adminHeaders })).status).toBe(400)
+      expect((await app.request('/admin/costs/usage?days=999', { headers: adminHeaders })).status).toBe(400)
+    })
+  })
+
   describe('parties', () => {
     it('refuses the read-only client key and the worker key on join', async () => {
       expect((await app.request('/v1/sessions/join', json({ code: 'ABCD2345' }, tokens.client))).status).toBe(403)

@@ -2,6 +2,7 @@ import { GoogleAuth } from 'google-auth-library'
 import { BigQuery } from '@google-cloud/bigquery'
 import { env, gcpCredentials } from '../env.js'
 import { AppError, notConfigured } from './errors.js'
+import { recordUsageEvent } from './usageEvents.js'
 
 let auth: GoogleAuth | undefined
 
@@ -93,7 +94,11 @@ export async function queryCosts(days: number): Promise<{ rows: CostRow[]; total
     FROM \`${e.BILLING_EXPORT_TABLE}\`
     WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
     GROUP BY day, service ORDER BY day DESC, cost_usd DESC`
-  const [rows] = await bq.query({ query, params: { days } })
+  // createQueryJob (rather than query) so the job's own statistics give us the bytes BigQuery billed.
+  const [job] = await bq.createQueryJob({ query, params: { days } })
+  const [rows] = await job.getQueryResults()
+  const stats = (job.metadata as { statistics?: { query?: { totalBytesProcessed?: string | number } } } | undefined)?.statistics
+  recordUsageEvent('bq_query', 1, Number(stats?.query?.totalBytesProcessed ?? 0))
   const typed = (rows as CostRow[]).map((r) => ({ ...r, cost_usd: Number(r.cost_usd), credits_usd: Number(r.credits_usd) }))
   const by_service: Record<string, number> = {}
   let total_usd = 0

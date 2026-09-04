@@ -118,10 +118,49 @@ Job fields: `id, session_id, status (queued|running|succeeded|failed), requested
 | `GET /admin/overview` | | counts of devices, maps, map bytes, sessions, keyframes, pending merges |
 | `GET /admin/network` | `hours` (default 24) | totals (requests, 4xx/5xx, p50/p95/p99/avg ms, bytes in/out), by route, by region, by country, per hour |
 | `GET /admin/storage` | | bucket bytes/objects total and per prefix (cached 10 min) |
-| `GET /admin/costs` | `days` (default 30) | BigQuery billing export: per day and service, totals (cached 1 h); 501 if not configured |
+| `GET /admin/costs` | `days` (default 30) | BigQuery billing export: **actual** spend per day and service, totals (cached 1 h); 501 if not configured |
+| `GET /admin/costs/overview` | `days` (1-365, default 30) | measured usage priced against the table: per provider `{ items[], total_usd, free_tier }`, `grand_total_usd`, `monthly_run_rate_usd`, `free_tier`, `actual.gcp`, `measured`, `caveats[]` |
+| `GET /admin/costs/usage` | `days` (1-365, default 30) | what the window actually contained (`api_usage`, `usage_events`, bucket stats, `pg_database_size`, inventory) and the monthly `quantities[]` it implies |
+| `GET /admin/costs/pricing` | | the price table: `{ month_days, pricing[], unverified_metrics[] }` — each entry has `provider, metric, label, kind, unit, unit_price_usd, free_quota, as_of, source, verified, note?` |
+| `GET /admin/costs/projection` | see below | the calculator: the same report shape plus `params`, `assumptions[]` and `quantities[]` |
 | `GET /admin/pricing` | `service=storage\|run\|bigquery`, `region` | Cloud Billing Catalog SKUs with tiered USD prices (cached 24 h) |
 | `GET /admin/sessions`, `GET /admin/usage/recent`, `GET /v1/devices` | | inventories |
 | `GET /admin/health` | | deep checks: database, GCP credentials, Ably, New Relic |
 | `GET|POST /admin/newrelic/push` | | pushes metrics + a `GhostmapSnapshot` event to New Relic; run daily by Vercel Cron |
 
-Metrics sent (all prefixed `ghostmap.`): `api.requests`, `api.errors.server`, `api.errors.client`, `api.latency.p50_ms|p95_ms|p99_ms`, `api.bytes.in|out`, `api.route.requests|p95_ms` (attributes `method`, `route`), `api.region.requests`, `api.country.requests`, `inventory.*`, `gcs.bytes`, `gcs.objects`, `gcs.prefix.bytes`, `gcs.estimated_monthly_usd`, `gcp.cost.30d_usd`, `gcp.cost.service_30d_usd` (attribute `gcp_service`), `gcp.cost.latest_day_usd`.
+Metrics sent (all prefixed `ghostmap.`): `api.requests`, `api.errors.server`, `api.errors.client`, `api.latency.p50_ms|p95_ms|p99_ms`, `api.bytes.in|out`, `api.route.requests|p95_ms` (attributes `method`, `route`), `api.region.requests`, `api.country.requests`, `inventory.*`, `gcs.bytes`, `gcs.objects`, `gcs.prefix.bytes`, `gcs.estimated_monthly_usd`, `gcp.cost.30d_usd`, `gcp.cost.service_30d_usd` (attribute `gcp_service`), `gcp.cost.latest_day_usd`, `cost.estimated_monthly_usd` (attribute `provider`, plus `provider=all`), `free_tier.used_pct` (attributes `provider`, `metric`), `free_tier.days_until_paid` (attribute `metric`).
+
+### `GET /admin/costs/projection`
+
+All parameters optional; anything omitted falls back to the default. `mappers` [2], `sessions_per_day` [2], `minutes_per_session` [10], `keyframes_per_second` [3], `depth_bytes_per_keyframe` [55000], `jpeg_every_n` [0, meaning no JPEGs], `viewers_per_session` [1], `map_size_mb` [40], `maps_per_day` [2], `retention_days` [30], `dashboard_views_per_day` [20].
+
+### The cost report shape
+
+```jsonc
+{
+  "window_days": 30,          // null for a projection
+  "month_days": 30,
+  "providers": [{
+    "provider": "gcs", "provider_label": "Google Cloud Storage",
+    "items": [{
+      "metric": "class_a_ops", "label": "Class A operations (writes, lists)",
+      "quantity": 62790,      // for one 30-day month
+      "measured_quantity": 31395, "unit": "operation",
+      "free_quota": 5000, "billable_quantity": 57790,
+      "unit_price_usd": 0.000005, "cost_usd": 0.28895,
+      "used_pct": 1255.8, "days_until_free_exhausted": 2.389,
+      "source": "https://…", "as_of": "2026-09-04", "verified": true,
+      "basis": "usage_events:signed_upload+gcs_list"
+    }],
+    "total_usd": 0.28895,
+    "free_tier": { "used_pct_max": 1255.8, "first_exhausted_metric": "gcs/class_a_ops", "days_until_paid_at_current_rate": 2.389 }
+  }],
+  "grand_total_usd": 18.065437,
+  "monthly_run_rate_usd": 18.065437,
+  "free_tier": { … },         // the same summary across every provider
+  "actual": { "gcp": { "total_usd": 0, "by_service": {}, "days": 30 } },
+  "unverified_metrics": ["bigquery/query_tib", …]
+}
+```
+
+`billable = max(0, quantity − free_quota)`. How every quantity is measured or estimated, and the free-tier limits with the dates they were checked, are in [docs/COSTS.md](COSTS.md).

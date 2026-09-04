@@ -130,3 +130,21 @@ export const completeMergeJob = z.object({
 export const windowQuery = z.object({ hours: z.coerce.number().int().min(1).max(24 * 30).default(24) })
 export const daysQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) })
 export const pricingQuery = z.object({ service: z.enum(['storage', 'run', 'bigquery']).default('storage'), region: z.string().optional() })
+
+/**
+ * PLAN §3 — the cost calculator's parameters. Every one is optional; `projection.ts` fills the gaps from
+ * `PROJECTION_DEFAULTS`, so `GET /admin/costs/projection` with no query is the default scenario.
+ */
+export const costProjectionQuery = z.object({
+  mappers: z.coerce.number().min(0).max(64).optional(),
+  sessions_per_day: z.coerce.number().min(0).max(1000).optional(),
+  minutes_per_session: z.coerce.number().min(0).max(600).optional(),
+  keyframes_per_second: z.coerce.number().min(0).max(60).optional(),
+  depth_bytes_per_keyframe: z.coerce.number().int().min(0).max(50_000_000).optional(),
+  jpeg_every_n: z.coerce.number().int().min(0).max(10_000).optional(),
+  viewers_per_session: z.coerce.number().min(0).max(1000).optional(),
+  map_size_mb: z.coerce.number().min(0).max(100_000).optional(),
+  maps_per_day: z.coerce.number().min(0).max(10_000).optional(),
+  retention_days: z.coerce.number().min(0).max(3650).optional(),
+  dashboard_views_per_day: z.coerce.number().min(0).max(1_000_000).optional(),
+})

@@ -22,8 +22,9 @@ iPhone (Ghostmap)  ──signed PUT──▶  Google Cloud Storage  ◀──sig
 | Collaborative sessions: participants, keyframe streaming, realtime fan-out, merge jobs | `/v1/sessions…`, `/v1/realtime/token`, `/v1/merge-jobs…`, `/v1/markers` | [04-ably-realtime](docs/setup/04-ably-realtime.md), [05-merge-worker](docs/setup/05-merge-worker.md) |
 | Client endpoints for the website and the iOS app | all `/v1/*` | [06-clients](docs/setup/06-clients.md) |
 | Admin monitoring: GCP costs and pricing, storage, network stats, New Relic push | `/admin/*` | [07-admin-monitoring-newrelic](docs/setup/07-admin-monitoring-newrelic.md) |
+| Cost estimation: every provider's free tier, what is left of it and what a month would cost | `/admin/costs/*` | [docs/COSTS.md](docs/COSTS.md) |
 
-Full endpoint reference: [docs/API.md](docs/API.md).
+Full endpoint reference: [docs/API.md](docs/API.md). Where every cost number comes from: [docs/COSTS.md](docs/COSTS.md).
 
 ## Quick start (local)
 
@@ -49,7 +50,8 @@ api/index.ts          Vercel entry (all paths rewrite here)
 src/app.ts            middleware (CORS, security headers, auth, usage recording) + routes
 src/routes/           auth, devices, maps, sessions, realtime, markers, merge, admin, health
 src/lib/              auth (JWT), google (id tokens), access (ownership), parties (invite codes, cap,
-                      colours), gcs, ably, gcp (billing, pricing, cloud run), newrelic, usage, cache, errors
+                      colours), gcs, ably, gcp (billing, pricing, cloud run), newrelic, usage,
+                      usageEvents (cost counters), costs/ (pricing, usage, engine, projection), cache, errors
 src/db/               drizzle schema, Neon client, SQL migrations
 src/schemas.ts        request validation
 scripts/              migrate.ts, smoke.sh

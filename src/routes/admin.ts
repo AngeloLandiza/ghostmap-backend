@@ -9,7 +9,11 @@ import { env } from '../env.js'
 import { bucketStats, isGcsConfigured } from '../lib/gcs.js'
 import { gcpHealth, listSkuPrices, queryCosts } from '../lib/gcp.js'
 import { isNewRelicConfigured, newRelicHealth, sendEvents, sendMetrics, type NRMetric } from '../lib/newrelic.js'
-import { daysQuery, pricingQuery, windowQuery } from '../schemas.js'
+import { costProjectionQuery, daysQuery, pricingQuery, windowQuery } from '../schemas.js'
+import {
+  MONTH_DAYS, estimate, pricingTable, project, unverifiedEntries, usageFor,
+  type ActualSpend,
+} from '../lib/costs/index.js'
 
 /** Drizzle's Neon HTTP driver returns `{ rows }` from raw `execute()`; normalize to an array of rows. */
 function rowsOf(result: unknown): Record<string, unknown>[] {
@@ -83,6 +87,40 @@ admin.get('/admin/costs', zValidator('query', daysQuery), async (c) => {
   const r = await cached(`gcp_costs_${days}`, 3600, () => queryCosts(days))
   return c.json({ days, ...r.value, cached: r.cached, updated_at: r.updated_at })
 })
+
+/** PLAN §3 — the price table itself: unit price, free quota, when it was checked and where it came from. */
+admin.get('/admin/costs/pricing', (c) => c.json({
+  month_days: MONTH_DAYS,
+  pricing: pricingTable(),
+  unverified_metrics: unverifiedEntries(),
+}))
+
+/** PLAN §3 — what the deployment actually did in the window, and the monthly quantities that implies. */
+admin.get('/admin/costs/usage', zValidator('query', daysQuery), async (c) => {
+  const { days } = c.req.valid('query')
+  const u = await usageFor(days)
+  return c.json({ days, since: u.measured.since, measured: u.measured, quantities: u.quantities, caveats: u.caveats })
+})
+
+/** PLAN §3 — measured usage priced against the table, with free-tier headroom and actual GCP spend. */
+admin.get('/admin/costs/overview', zValidator('query', daysQuery), async (c) => {
+  const { days } = c.req.valid('query')
+  const u = await usageFor(days)
+  let actual: ActualSpend = { gcp: null }
+  if (env().BILLING_EXPORT_TABLE) {
+    try {
+      const r = await cached(`gcp_costs_${days}`, 3600, () => queryCosts(days))
+      actual = { gcp: { total_usd: r.value.total_usd, by_service: r.value.by_service, days } }
+    } catch (e) {
+      console.error('actual GCP spend unavailable', e)
+    }
+  }
+  const report = estimate(u.quantities, { window_days: days, actual })
+  return c.json({ days, ...report, measured: u.measured, caveats: u.caveats })
+})
+
+/** PLAN §3 — the calculator: describe a month of activity, get the same report shape plus its assumptions. */
+admin.get('/admin/costs/projection', zValidator('query', costProjectionQuery), (c) => c.json(project(c.req.valid('query'))))
 
 admin.get('/admin/pricing', zValidator('query', pricingQuery), async (c) => {
   const { service, region } = c.req.valid('query')
@@ -163,6 +201,26 @@ async function pushToNewRelic() {
     } catch (e) {
       console.error('cost query failed', e)
     }
+  }
+
+  // PLAN §3: estimated monthly spend per provider and how full each free tier is.
+  try {
+    const usage = await usageFor(30)
+    const report = estimate(usage.quantities, { window_days: 30 })
+    metrics.push({ name: 'ghostmap.cost.estimated_monthly_usd', type: 'gauge', value: report.grand_total_usd, attributes: { provider: 'all' } })
+    for (const p of report.providers) {
+      metrics.push({ name: 'ghostmap.cost.estimated_monthly_usd', type: 'gauge', value: p.total_usd, attributes: { provider: p.provider } })
+      for (const item of p.items) {
+        if (item.used_pct === null) continue
+        metrics.push({ name: 'ghostmap.free_tier.used_pct', type: 'gauge', value: item.used_pct, attributes: { provider: p.provider, metric: item.metric } })
+      }
+    }
+    const soonest = report.free_tier.days_until_paid_at_current_rate
+    if (soonest !== undefined) {
+      metrics.push({ name: 'ghostmap.free_tier.days_until_paid', type: 'gauge', value: soonest, attributes: { metric: report.free_tier.first_exhausted_metric ?? 'unknown' } })
+    }
+  } catch (e) {
+    console.error('cost estimate for New Relic failed', e)
   }
 
   const metricResult = await sendMetrics(metrics)

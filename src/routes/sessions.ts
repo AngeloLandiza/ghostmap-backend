@@ -8,6 +8,7 @@ import { isAblyConfigured, createTokenRequest, publish, sessionChannel } from '.
 import { AppError, badRequest, forbidden, notFound, sessionEnded, sessionFull } from '../lib/errors.js'
 import { keyframeContentType, keyframeObjectPath, signDownload, signUpload, type KeyframeKind } from '../lib/gcs.js'
 import { newId } from '../lib/ids.js'
+import { recordUsageEvent } from '../lib/usageEvents.js'
 import {
   generateInviteCode, isInviteCode, joinDecision, matchParticipant, normalizeInviteCode, pickColor, shareUrl,
   type Identity, type ParticipantKind,
@@ -353,6 +354,8 @@ sessions.post('/v1/sessions/:id/keyframes', requireAuth('device'), zValidator('j
     .onConflictDoUpdate({ target: [schema.keyframes.sessionId, schema.keyframes.deviceId, schema.keyframes.seq], set: { t: sql`excluded.t`, pose: sql`excluded.pose`, aligned: sql`excluded.aligned`, pointsInline: sql`excluded.points_inline`, bytes: sql`excluded.bytes` } })
     .returning({ id: schema.keyframes.id, seq: schema.keyframes.seq })
   const bytes = values.reduce((s, v) => s + v.bytes, 0)
+  // PLAN §3: keyframes and the blob bytes behind them drive the storage and Ably lines of the cost report.
+  recordUsageEvent('keyframe_registered', values.length, bytes)
   await db().update(schema.sessions).set({ keyframeCount: sql`${schema.sessions.keyframeCount} + ${values.length}`, bytes: sql`${schema.sessions.bytes} + ${bytes}` }).where(eq(schema.sessions.id, row.id))
   if (isAblyConfigured()) {
     // Live viewers get pose + intrinsics + inline points; blobs stay in GCS and are referenced by path.

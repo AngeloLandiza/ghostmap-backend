@@ -1,6 +1,7 @@
 import { Storage, type Bucket } from '@google-cloud/storage'
 import { env, gcpCredentials } from '../env.js'
 import { notConfigured } from './errors.js'
+import { recordUsageEvent } from './usageEvents.js'
 
 let storage: Storage | undefined
 
@@ -64,16 +65,21 @@ export async function signUpload(path: string, contentType: string, opts: { resu
   const file = gcsBucket().file(path)
   if (opts.resumable) {
     const [url] = await file.getSignedUrl({ version: 'v4', action: 'resumable', expires, contentType })
+    // One minted URL is one object the client is about to write, i.e. one GCS Class A operation (PLAN §3).
+    recordUsageEvent('signed_upload', 1, 0)
     return { path, url, method: 'POST', headers: { 'Content-Type': contentType, 'x-goog-resumable': 'start' }, expires_at: new Date(expires).toISOString(), resumable: true }
   }
   const [url] = await file.getSignedUrl({ version: 'v4', action: 'write', expires, contentType })
+  recordUsageEvent('signed_upload', 1, 0)
   return { path, url, method: 'PUT', headers: { 'Content-Type': contentType }, expires_at: new Date(expires).toISOString(), resumable: false }
 }
 
 /** V4 signed URL for reading an object. */
-export async function signDownload(path: string, ttlSeconds = 15 * 60): Promise<{ url: string; expires_at: string }> {
+export async function signDownload(path: string, ttlSeconds = 15 * 60, knownBytes = 0): Promise<{ url: string; expires_at: string }> {
   const expires = Date.now() + ttlSeconds * 1000
   const [url] = await gcsBucket().file(path).getSignedUrl({ version: 'v4', action: 'read', expires })
+  // One minted URL is one object the client is about to read: a Class B operation plus its egress (PLAN §3).
+  recordUsageEvent('signed_download', 1, knownBytes)
   return { url, expires_at: new Date(expires).toISOString() }
 }
 
@@ -88,6 +94,7 @@ export async function statObject(path: string): Promise<ObjectInfo | undefined> 
 }
 
 export async function listObjects(prefix: string, max = 5000): Promise<ObjectInfo[]> {
+  recordUsageEvent('gcs_list', 1, 0)
   const [files] = await gcsBucket().getFiles({ prefix, maxResults: max })
   return files.map((f) => ({ path: f.name, size: Number(f.metadata.size ?? 0), updated: f.metadata.updated, contentType: f.metadata.contentType }))
 }
@@ -106,6 +113,8 @@ export async function bucketStats(): Promise<{ total_bytes: number; total_object
   let total_objects = 0
   let pageToken: string | undefined
   do {
+    // Every page of a listing is its own Class A operation.
+    recordUsageEvent('gcs_list', 1, 0)
     const [files, next] = await bucket.getFiles({ maxResults: 1000, pageToken, autoPaginate: false })
     for (const f of files) {
       const size = Number(f.metadata.size ?? 0)

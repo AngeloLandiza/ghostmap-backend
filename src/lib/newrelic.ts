@@ -1,4 +1,5 @@
 import { env } from '../env.js'
+import { recordUsageEvent } from './usageEvents.js'
 
 export interface NRMetric {
   name: string
@@ -35,6 +36,8 @@ export async function sendMetrics(metrics: NRMetric[], common: Record<string, st
   if (metrics.length === 0) return { ok: true, status: 204 }
   const now = Date.now()
   const e = env()
+  // Ingest is what New Relic charges for: count the metrics and the bytes actually shipped (PLAN §3).
+  recordUsageEvent('nr_push', metrics.length, JSON.stringify(metrics).length)
   return post(endpoints[e.NEW_RELIC_REGION].metric, [{
     common: { timestamp: now, attributes: { service: 'ghostmap-backend', environment: e.VERCEL_ENV ?? e.NODE_ENV, ...common } },
     metrics: metrics.map((m) => ({ ...m, timestamp: m.timestamp ?? now })),
@@ -46,6 +49,7 @@ export async function sendEvents(events: NREvent[]) {
   const e = env()
   if (!e.NEW_RELIC_ACCOUNT_ID) return { ok: false, status: 0, detail: 'NEW_RELIC_ACCOUNT_ID not set' }
   if (events.length === 0) return { ok: true, status: 204 }
+  recordUsageEvent('nr_push', events.length, JSON.stringify(events).length)
   return post(endpoints[e.NEW_RELIC_REGION].event(e.NEW_RELIC_ACCOUNT_ID), events.map((ev) => ({ timestamp: Date.now(), ...ev })))
 }
 

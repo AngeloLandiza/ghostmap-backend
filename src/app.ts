@@ -6,6 +6,7 @@ import { allowedOrigins } from './env.js'
 import { errorHandler } from './lib/errors.js'
 import { optionalAuth } from './lib/auth.js'
 import { usageRecorder } from './lib/usage.js'
+import { usageEventRecorder } from './lib/usageEvents.js'
 import { admin } from './routes/admin.js'
 import { auth } from './routes/auth.js'
 import { devices } from './routes/devices.js'
@@ -36,6 +37,7 @@ app.use('*', cors({
 if (process.env.NODE_ENV !== 'test') app.use('*', logger())
 app.use('*', optionalAuth)
 app.use('*', usageRecorder)
+app.use('*', usageEventRecorder)
 
 app.route('/', health)
 app.route('/', auth)
