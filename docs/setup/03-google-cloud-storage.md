@@ -22,7 +22,7 @@
 3. **CORS on the bucket** so the web app can upload/download with signed URLs from the browser:
    ```bash
    cat > cors.json <<'JSON'
-   [{"origin": ["https://ghostmap.vercel.app", "http://localhost:5173"],
+   [{"origin": ["https://ghostmap.vercel.app", "https://ghostmap-dashboard.vercel.app", "https://ghostmap-dashboard-*.vercel.app", "http://localhost:5173"],
      "method": ["GET", "PUT", "POST", "HEAD"],
      "responseHeader": ["Content-Type", "x-goog-resumable", "Location", "Content-Range"],
      "maxAgeSeconds": 3600}]
