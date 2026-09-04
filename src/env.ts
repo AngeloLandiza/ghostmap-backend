@@ -9,6 +9,10 @@ const schema = z.object({
   WORKER_API_KEY: z.string().optional(),
   CRON_SECRET: z.string().optional(),
   ALLOWED_ORIGINS: z.string().default(''),
+  // Comma-separated Google OAuth client ids accepted as `aud` on incoming id tokens (web + iOS).
+  GOOGLE_CLIENT_IDS: z.string().default(''),
+  // Public dashboard origin; party share links are `${DASHBOARD_URL}/join/<code>`.
+  DASHBOARD_URL: z.string().default('https://ghostmap.vercel.app'),
   // Any of these may carry the Neon connection string (Vercel's Neon integration names them with a prefix).
   DATABASE_URL: z.string().optional(),
   DATABASE_POSTGRES_URL: z.string().optional(),
@@ -71,6 +75,16 @@ export function clientAccessKeys(): string[] {
 
 export function allowedOrigins(): string[] {
   return env().ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+/** Accepted audiences for Google id tokens; empty when Google sign-in is not configured. */
+export function googleClientIds(): string[] {
+  return env().GOOGLE_CLIENT_IDS.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+/** Dashboard origin without a trailing slash. */
+export function dashboardUrl(): string {
+  return env().DASHBOARD_URL.replace(/\/+$/, '')
 }
 
 /** Service-account credentials decoded from GCP_SA_KEY_B64, or undefined when not configured. */

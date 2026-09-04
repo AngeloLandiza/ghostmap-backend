@@ -8,7 +8,7 @@ import { createMarker } from '../schemas.js'
 export const markers = new Hono()
 
 /** Printed fiducial markers shared as coordinate origins (MVP plan §2, "option b"). */
-markers.get('/v1/markers', requireAuth('device', 'client'), async (c) => {
+markers.get('/v1/markers', requireAuth('device', 'client', 'user'), async (c) => {
   return c.json({ markers: await db().select().from(schema.markers).orderBy(asc(schema.markers.id)) })
 })
 

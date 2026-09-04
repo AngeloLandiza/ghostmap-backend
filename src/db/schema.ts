@@ -1,7 +1,18 @@
-import { pgTable, uuid, text, integer, bigint, real, doublePrecision, jsonb, timestamp, bigserial, primaryKey, unique } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, integer, bigint, boolean, real, doublePrecision, jsonb, timestamp, bigserial, unique } from 'drizzle-orm/pg-core'
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey(),
+  googleSub: text('google_sub').notNull(),
+  email: text('email').notNull().default(''),
+  name: text('name').notNull().default(''),
+  pictureUrl: text('picture_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 export const devices = pgTable('devices', {
   id: uuid('id').primaryKey(),
+  userId: uuid('user_id'),
   name: text('name').notNull().default(''),
   platform: text('platform').notNull().default('ios'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -23,6 +34,7 @@ export const maps = pgTable('maps', {
   parentMapId: uuid('parent_map_id'),
   sessionId: uuid('session_id'),
   deviceId: uuid('device_id'),
+  ownerUserId: uuid('owner_user_id'),
   frame: text('frame').notNull().default('world:session-start'),
   origin: jsonb('origin').notNull().$type<Record<string, unknown>>().default({ type: 'session-start' }),
   status: text('status').notNull().default('uploading'),
@@ -43,6 +55,9 @@ export const sessions = pgTable('sessions', {
   status: text('status').notNull().default('active'),
   origin: jsonb('origin').notNull().$type<Record<string, unknown>>().default({ type: 'session-start' }),
   leaderDeviceId: uuid('leader_device_id'),
+  ownerUserId: uuid('owner_user_id'),
+  inviteCode: text('invite_code'),
+  maxParticipants: integer('max_participants').notNull().default(4),
   baseMapId: uuid('base_map_id'),
   mergedMapId: uuid('merged_map_id'),
   keyframeCount: integer('keyframe_count').notNull().default(0),
@@ -51,13 +66,19 @@ export const sessions = pgTable('sessions', {
   endedAt: timestamp('ended_at', { withTimezone: true }),
 })
 
+/** One row per identity in a session. Viewers have no `device_id`; legacy device rows have no `user_id`. */
 export const sessionParticipants = pgTable('session_participants', {
+  id: uuid('id').primaryKey(),
   sessionId: uuid('session_id').notNull(),
-  deviceId: uuid('device_id').notNull(),
+  deviceId: uuid('device_id'),
+  userId: uuid('user_id'),
+  kind: text('kind').notNull().default('device'),
+  color: text('color'),
+  displayName: text('display_name'),
   role: text('role').notNull().default('member'),
   joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   leftAt: timestamp('left_at', { withTimezone: true }),
-}, (t) => ({ pk: primaryKey({ columns: [t.sessionId, t.deviceId] }) }))
+})
 
 export const keyframes = pgTable('keyframes', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),
@@ -69,6 +90,7 @@ export const keyframes = pgTable('keyframes', {
   intrinsics: jsonb('intrinsics').notNull().$type<Record<string, unknown>>(),
   trackingState: text('tracking_state').notNull().default('normal'),
   worldMappingStatus: text('world_mapping_status').notNull().default('unknown'),
+  aligned: boolean('aligned').notNull().default(true),
   depthRef: text('depth_ref'),
   confidenceRef: text('confidence_ref'),
   jpegRef: text('jpeg_ref'),

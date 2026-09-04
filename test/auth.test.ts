@@ -25,6 +25,25 @@ describe('auth', () => {
     expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 86400 * 1000)
   })
 
+  it('mints 7-day user tokens carrying the account id', async () => {
+    const { token, expiresAt } = await mod.mintToken({ role: 'user', user_id: '22222222-2222-4222-8222-222222222222', email: 'a@example.com' })
+    const p = await mod.verifyToken(token)
+    expect(p.role).toBe('user')
+    expect(p.userId).toBe('22222222-2222-4222-8222-222222222222')
+    expect(p.email).toBe('a@example.com')
+    expect(p.deviceId).toBeUndefined()
+    const ttl = new Date(expiresAt).getTime() - Date.now()
+    expect(ttl).toBeGreaterThan(6 * 86400 * 1000)
+    expect(ttl).toBeLessThan(8 * 86400 * 1000)
+  })
+
+  it('carries both ids on a device token minted after Google sign-in', async () => {
+    const { token } = await mod.mintToken({ role: 'device', device_id: '11111111-1111-4111-8111-111111111111', user_id: '22222222-2222-4222-8222-222222222222' })
+    const p = await mod.verifyToken(token)
+    expect(p.deviceId).toBe('11111111-1111-4111-8111-111111111111')
+    expect(p.userId).toBe('22222222-2222-4222-8222-222222222222')
+  })
+
   it('rejects tampered tokens', async () => {
     const { token } = await mod.mintToken({ role: 'client' })
     await expect(mod.verifyToken(token.slice(0, -2) + 'xx')).rejects.toThrow()

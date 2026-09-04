@@ -3,12 +3,18 @@ import { SignJWT, jwtVerify } from 'jose'
 import { env, clientAccessKeys } from '../env.js'
 import { AppError } from './errors.js'
 
-export type Role = 'admin' | 'worker' | 'client' | 'device'
+export type Role = 'admin' | 'worker' | 'client' | 'device' | 'user'
+
+const ROLES: readonly Role[] = ['admin', 'worker', 'client', 'device', 'user']
 
 export interface Principal {
   role: Role
   /** Present for role `device`. */
   deviceId?: string
+  /** Present for Google-backed principals (`user`, and `device` tokens minted after sign-in). */
+  userId?: string
+  /** Google account email, when the token carries one. */
+  email?: string
   /** How the principal authenticated. */
   via: 'jwt' | 'api_key' | 'cron'
 }
@@ -21,13 +27,13 @@ declare module 'hono' {
 
 const secret = () => new TextEncoder().encode(env().AUTH_JWT_SECRET)
 
-export interface TokenClaims { role: Role; device_id?: string }
+export interface TokenClaims { role: Role; device_id?: string; user_id?: string; email?: string }
 
-/** Mints an HS256 JWT. Device tokens live 30 days, client tokens 7 days, admin tokens 1 day. */
+/** Mints an HS256 JWT. Device tokens live 30 days, user/client tokens 7 days, admin tokens 1 day. */
 export async function mintToken(claims: TokenClaims): Promise<{ token: string; expiresAt: string }> {
-  const ttlSeconds = claims.role === 'device' ? 30 * 86400 : claims.role === 'client' ? 7 * 86400 : 86400
+  const ttlSeconds = claims.role === 'device' ? 30 * 86400 : claims.role === 'client' || claims.role === 'user' ? 7 * 86400 : 86400
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds
-  const token = await new SignJWT({ role: claims.role, device_id: claims.device_id })
+  const token = await new SignJWT({ role: claims.role, device_id: claims.device_id, user_id: claims.user_id, email: claims.email })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setIssuer('ghostmap-backend')
@@ -39,8 +45,14 @@ export async function mintToken(claims: TokenClaims): Promise<{ token: string; e
 export async function verifyToken(token: string): Promise<Principal> {
   const { payload } = await jwtVerify(token, secret(), { issuer: 'ghostmap-backend' })
   const role = payload.role as Role
-  if (!['admin', 'worker', 'client', 'device'].includes(role)) throw new AppError('unauthorized', 'invalid token role')
-  return { role, deviceId: typeof payload.device_id === 'string' ? payload.device_id : undefined, via: 'jwt' }
+  if (!ROLES.includes(role)) throw new AppError('unauthorized', 'invalid token role')
+  return {
+    role,
+    deviceId: typeof payload.device_id === 'string' ? payload.device_id : undefined,
+    userId: typeof payload.user_id === 'string' ? payload.user_id : undefined,
+    email: typeof payload.email === 'string' ? payload.email : undefined,
+    via: 'jwt',
+  }
 }
 
 /** Resolves a raw access key (as pasted into a client) to a role, or undefined. */

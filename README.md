@@ -16,6 +16,8 @@ iPhone (Ghostmap)  ──signed PUT──▶  Google Cloud Storage  ◀──sig
 | Feature | Endpoints | Setup guide |
 |---|---|---|
 | Auth: access keys → JWTs for devices, web clients, admins, workers | `POST /v1/auth/token`, `GET /v1/devices/me` | [01-vercel-and-auth](docs/setup/01-vercel-and-auth.md), [02-neon](docs/setup/02-neon-postgres.md) |
+| Google accounts: sign in on iOS and the web, map/party ownership and visibility | `POST /v1/auth/google`, `GET /v1/auth/me` | [01-vercel-and-auth](docs/setup/01-vercel-and-auth.md) |
+| Parties: invite codes, share links, up to four accounts per party, colours, join/leave/rejoin | `POST /v1/sessions/join`, `GET /v1/sessions/by-code/:code` | [04-ably-realtime](docs/setup/04-ably-realtime.md) |
 | Map storage in GCS in real time (signed uploads, finalize, download, delete) | `/v1/maps…` | [03-google-cloud-storage](docs/setup/03-google-cloud-storage.md) |
 | Collaborative sessions: participants, keyframe streaming, realtime fan-out, merge jobs | `/v1/sessions…`, `/v1/realtime/token`, `/v1/merge-jobs…`, `/v1/markers` | [04-ably-realtime](docs/setup/04-ably-realtime.md), [05-merge-worker](docs/setup/05-merge-worker.md) |
 | Client endpoints for the website and the iOS app | all `/v1/*` | [06-clients](docs/setup/06-clients.md) |
@@ -46,7 +48,8 @@ Hono 4 (TypeScript) on Vercel's Node runtime · Neon Postgres via Drizzle (HTTP 
 api/index.ts          Vercel entry (all paths rewrite here)
 src/app.ts            middleware (CORS, security headers, auth, usage recording) + routes
 src/routes/           auth, devices, maps, sessions, realtime, markers, merge, admin, health
-src/lib/              auth (JWT), gcs, ably, gcp (billing, pricing, cloud run), newrelic, usage, cache, errors
+src/lib/              auth (JWT), google (id tokens), access (ownership), parties (invite codes, cap,
+                      colours), gcs, ably, gcp (billing, pricing, cloud run), newrelic, usage, cache, errors
 src/db/               drizzle schema, Neon client, SQL migrations
 src/schemas.ts        request validation
 scripts/              migrate.ts, smoke.sh

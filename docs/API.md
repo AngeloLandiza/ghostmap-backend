@@ -1,15 +1,16 @@
 # API reference
 
-Base URL: your Vercel deployment (e.g. `https://ghostmap-backend.vercel.app`). All bodies and responses are JSON. Errors are `{ "error": { "code", "message", "details?" } }` with codes `bad_request` 400, `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `not_configured` 501, `upstream_error` 502, `internal` 500.
+Base URL: your Vercel deployment (e.g. `https://ghostmap-backend.vercel.app`). All bodies and responses are JSON. Errors are `{ "error": { "code", "message", "details?" } }` with codes `bad_request` 400, `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `session_full` 409, `session_ended` 410, `not_configured` 501, `upstream_error` 502, `internal` 500.
 
 ## Authentication
 
-`Authorization: Bearer <token-or-key>` (or `X-Api-Key`). Four roles:
+`Authorization: Bearer <token-or-key>` (or `X-Api-Key`). Five roles:
 
 | Role | How obtained | Can |
 |---|---|---|
-| `device` | `POST /v1/auth/token` with a client access key **and** a `device` object → 30-day JWT | create/upload/finalize/delete its own maps, create/join sessions, stream keyframes, realtime publish |
-| `client` | `POST /v1/auth/token` with a client access key, no device → 7-day JWT | read maps, sessions, keyframes, realtime subscribe |
+| `device` | `POST /v1/auth/token` with a client access key **and** a `device` object, or `POST /v1/auth/google` with a `device` object → 30-day JWT | create/upload/finalize/delete its own maps, create/join parties, stream keyframes, realtime publish |
+| `user` | `POST /v1/auth/google` without a device → 7-day JWT | read and manage its own maps, create/join/leave/end parties as a viewer, realtime publish in parties it joined |
+| `client` | `POST /v1/auth/token` with a client access key, no device → 7-day JWT | legacy read-only operator key: read all maps, sessions and keyframes, realtime subscribe |
 | `worker` | `WORKER_API_KEY` directly, or exchanged for a 1-day JWT | claim/complete merge jobs |
 | `admin` | `ADMIN_API_KEY` directly, or exchanged for a 1-day JWT | everything, plus `/admin/*` |
 
@@ -21,8 +22,28 @@ Vercel Cron calls `/admin/newrelic/push` with `Authorization: Bearer <CRON_SECRE
 ```
 → `{ "token", "expires_at", "role", "device_id?" }`
 
+### `POST /v1/auth/google`
+```json
+{ "id_token": "<google id token>", "device": { "id": "<uuid>", "name": "Angelo's iPhone", "platform": "ios" } }
+```
+The id token is verified with `google-auth-library` against the audiences in `GOOGLE_CLIENT_IDS`; accounts whose email Google has not verified are rejected (401). The account is upserted on `google_sub`.
+
+* with `device` → `{ token, expires_at, role: "device", device_id, user }` (30-day JWT carrying both `user_id` and `device_id`; the device row is bound to the account)
+* without → `{ token, expires_at, role: "user", user }` (7-day JWT carrying `user_id`)
+
+`user`: `{ id, email, name, picture_url, created_at }`. Returns `501 not_configured` when `GOOGLE_CLIENT_IDS` is empty.
+
+### `GET /v1/auth/me` (any authenticated role) → `{ role, device_id, user }` (`user` is `null` for key-based and legacy tokens).
+
 ### `GET /health` (public) → `{ ok, version, region, time }`
 ### `GET /v1/devices/me` (device) → `{ device, role }`
+
+## Ownership and visibility
+
+Maps carry `owner_user_id` (the signed-in account) and `device_id`; parties carry `owner_user_id` and `leader_device_id`.
+
+* **Read** — a `device`/`user` sees its own maps, maps produced by a party it takes (or took) part in, and rows created before accounts existed (no owner at all). Parties are visible to their owner, their leader device and their participants. `admin` and the legacy read-only `client` key see everything.
+* **Write** — renaming, finalizing, re-uploading and deleting a map require ownership. Ending or merging a party requires its owner account, its leader device or `admin`. The `client` key never writes.
 
 ## Maps
 
@@ -30,49 +51,59 @@ A map is a finished on-device capture (the Ghostmap app's map folder). Files: `m
 
 | Method & path | Role | Body / query | Returns |
 |---|---|---|---|
-| `GET /v1/maps` | device, client | `limit`, `cursor` (ISO date), `status`, `session_id` | `{ maps[], next_cursor }` |
-| `POST /v1/maps` | device | `{ name, frame?, origin?, session_id?, parent_map_id?, files? }` | `201 { map, uploads[] }` |
-| `POST /v1/maps/:id/upload-urls` | device (owner) | `{ files: [...] }` | `{ uploads[] }` |
-| `POST /v1/maps/:id/finalize` | device (owner) | `{ manifest? }` (read from GCS if omitted) | `{ map }` with status `saved` |
-| `GET /v1/maps/:id` | device, client | | `{ map, downloads: { "cloud.ply": { url, expires_at }, … } }` |
-| `GET /v1/maps/:id/files/:name` | device, client | | `302` to a 5-minute signed URL |
-| `PATCH /v1/maps/:id` | device (owner) | `{ name }` | `{ map }` |
-| `DELETE /v1/maps/:id` | device (owner) | | `{ deleted, objects_removed }` |
+| `GET /v1/maps` | device, client, user | `limit`, `cursor` (ISO date), `status`, `session_id` | `{ maps[], next_cursor }` (filtered by visibility) |
+| `POST /v1/maps` | device, user | `{ name, frame?, origin?, session_id?, parent_map_id?, files? }` | `201 { map, uploads[] }` |
+| `POST /v1/maps/:id/upload-urls` | owner | `{ files: [...] }` | `{ uploads[] }` |
+| `POST /v1/maps/:id/finalize` | owner | `{ manifest? }` (read from GCS if omitted) | `{ map }` with status `saved` |
+| `GET /v1/maps/:id` | device, client, user | | `{ map, downloads: { "cloud.ply": { url, expires_at }, … } }` |
+| `GET /v1/maps/:id/files/:name` | device, client, user | | `302` to a 5-minute signed URL |
+| `PATCH /v1/maps/:id` | owner | `{ name }` | `{ map }` |
+| `DELETE /v1/maps/:id` | owner | | `{ deleted, objects_removed }` |
 
 An `uploads[]` entry: `{ path, url, method: "PUT"|"POST", headers, expires_at, resumable }`. For `PUT`, send the file body with the listed headers. For resumable (`cloud.ply`, `keyframes.bin`): `POST` with the listed headers and an empty body, read the `Location` header from GCS, then `PUT` the bytes to that location (optionally in chunks with `Content-Range`).
 
-Map record fields: `id, name, version, parent_map_id, session_id, device_id, frame, origin, status (uploading|saved|failed|deleted), manifest, point_count, keyframe_count, bbox, duration_s, size_bytes, files[], created_at, finalized_at`.
+Map record fields: `id, name, version, parent_map_id, session_id, device_id, owner_user_id, frame, origin, status (uploading|saved|failed|deleted), manifest, point_count, keyframe_count, bbox, duration_s, size_bytes, files[], created_at, finalized_at`.
 
-## Sessions (collaborative mapping)
+## Parties (collaborative sessions)
+
+A party is a session several phones and browsers share. It has an **invite code** (8 uppercase base32 characters, `A-Z` and `2-7`) and a **share link** `${DASHBOARD_URL}/join/<code>`.
 
 | Method & path | Role | Body / query | Returns |
 |---|---|---|---|
-| `POST /v1/sessions` | device | `{ name, origin?: {type: "session-start"\|"marker", marker_id?}, base_map_id? }` | `201 { session, participants, channel }` (creator = leader) |
-| `GET /v1/sessions` | device, client | `status`, `limit` | `{ sessions[] }` |
-| `GET /v1/sessions/:id` | device, client | | `{ session, participants, channel }` |
-| `POST /v1/sessions/:id/join` | device | | `{ session, participants, channel }` |
-| `POST /v1/sessions/:id/leave` | device | | `{ left }` |
-| `POST /v1/sessions/:id/end` | leader / admin | | `{ session }` (status `ended`) |
-| `POST /v1/sessions/:id/upload-urls` | participant | `{ items: [{ seq, kinds: ["depth","confidence","jpeg","mesh"] }] }` (≤ 100) | `{ uploads: [{ seq, kind, path, url, method, headers, expires_at }] }` |
-| `POST /v1/sessions/:id/keyframes` | participant | `{ keyframes: [Keyframe] }` (≤ 50) | `201 { registered: [{ id, seq }] }` and an Ably `keyframes` message |
-| `GET /v1/sessions/:id/keyframes` | device, client | `device_id`, `since_id`, `limit`, `urls=1` | `{ keyframes[], next_since_id }` |
-| `POST /v1/sessions/:id/merge` | leader / admin | | `202 { job }` |
+| `POST /v1/sessions` | device, user | `{ name, origin?: {type: "session-start"\|"marker", marker_id?}, base_map_id?, max_participants? }` | `201 { session, participants, channel, share_url }` |
+| `GET /v1/sessions` | device, client, user | `status`, `limit` | `{ sessions[] }` (filtered by visibility) |
+| `GET /v1/sessions/by-code/:code` | any authenticated | | `{ session: { id, name, status, origin, invite_code, share_url, participant_count, max_participants, owner_name }, can_join, reason }` |
+| `POST /v1/sessions/join` | device, user | `{ code, kind?: "device"\|"viewer", display_name? }` | `{ session, participants, channel, share_url, me, realtime }` |
+| `GET /v1/sessions/:id` | device, client, user | | `{ session, participants, channel, share_url }` |
+| `POST /v1/sessions/:id/join` | device, user | `{ kind?, display_name? }` (optional body) | same as `POST /v1/sessions/join` |
+| `POST /v1/sessions/:id/leave` | device, user | | `{ left, participants }` |
+| `POST /v1/sessions/:id/end` | owner / leader / admin | | `{ session }` (status `ended`) |
+| `POST /v1/sessions/:id/upload-urls` | participant device | `{ items: [{ seq, kinds: ["depth","confidence","jpeg","mesh"] }] }` (≤ 100) | `{ uploads: [{ seq, kind, path, url, method, headers, expires_at }] }` |
+| `POST /v1/sessions/:id/keyframes` | participant device | `{ keyframes: [Keyframe] }` (≤ 50) | `201 { registered: [{ id, seq }] }` and an Ably `keyframes` message |
+| `GET /v1/sessions/:id/keyframes` | device, client, user (readable party) | `device_id`, `since_id`, `limit`, `urls=1` | `{ keyframes[], next_since_id }` |
+| `POST /v1/sessions/:id/merge` | owner / leader / admin | | `202 { job }` |
 
-`Keyframe`: `{ seq, t, pose: [16 floats, column-major], intrinsics: {fx,fy,cx,cy,w,h}, tracking_state?, world_mapping_status?, depth_ref?, confidence_ref?, jpeg_ref?, mesh_ref?, points_inline?: [x,y,z,r,g,b,…] ≤ 2000 points, bytes? }`. Object paths default to `sessions/<session>/kf/<device>/<seq>.depth.lzfse` etc. Poses are expressed in the session's origin frame (marker frame when `origin.type == "marker"`).
+**Joining.** `kind` defaults to `device` for device tokens and `viewer` for user tokens; joining as a mapper needs a device token, joining as a viewer needs a signed-in account. `max_participants` (default 4, max 8) caps the **distinct active accounts** in a party — one account counts once however many phones it brings, and a legacy device with no account counts on its own. Joining a full party → `409 { "error": { "code": "session_full" } }`; joining an ended (or merging/merged) party → `410 { "error": { "code": "session_ended" } }`. Rejoining is always allowed: it clears `left_at` and keeps the colour the participant was given.
 
-Realtime channel `session:<id>` messages: `keyframes` `{ device_id, keyframes[] }`, `participant` `{ event: joined|left, device_id }`, `session` `{ event: ended }`, `merge` `{ event: succeeded|failed, job_id, map_id, error }`.
+`participant`: `{ id, session_id, device_id, user_id, kind: "device"|"viewer", color, display_name, role: "leader"|"member", joined_at, left_at }`. Colours come from a fixed palette of eight, handed out in join order.
 
-### `POST /v1/realtime/token` (device, client)
-`{ session_id? }` → `{ token_request, channel, can_publish }`. Pass `token_request` to the Ably SDK (`authCallback`). Participants of the session can publish; others subscribe only.
+`me` is the caller's own participant row. `realtime` is `{ token_request, channel, can_publish }` when Ably is configured, otherwise `null`.
+
+`Keyframe`: `{ seq, t, pose: [16 floats, column-major], intrinsics: {fx,fy,cx,cy,w,h}, tracking_state?, world_mapping_status?, aligned?, depth_ref?, confidence_ref?, jpeg_ref?, mesh_ref?, points_inline?: [x,y,z,r,g,b,…] ≤ 2000 points, bytes? }`. Object paths default to `sessions/<session>/kf/<device>/<seq>.depth.lzfse` etc. Poses are expressed in the party's origin frame (marker frame when `origin.type == "marker"`); `aligned` (default `true`) is `false` while a device has not seen the marker yet, so viewers can grey those points out.
+
+Realtime channel `session:<id>` messages: `keyframes` `{ device_id, user_id, color, keyframes: [{ seq, t, pose, intrinsics, tracking_state, aligned, depth_ref, points_inline }] }`, `participant` `{ event: joined|left, participant }`, `session` `{ event: ended }`, `merge` `{ event: succeeded|failed, job_id, map_id, error }`. Devices also publish `pose` `{ device_id, t, pose, aligned }` at ≤ 10 Hz, and every client enters presence with `{ user_id, display_name, kind, color }`.
+
+### `POST /v1/realtime/token` (device, client, user)
+`{ session_id? }` → `{ token_request, channel, can_publish }`. Pass `token_request` to the Ably SDK (`authCallback`). With a `session_id`, an **active participant** (mapper device or signed-in viewer) gets `publish, subscribe, presence, history` on that channel and anyone else gets `403 forbidden`; `admin` gets everything and the legacy `client` key keeps its subscribe-only token.
 
 ### Markers
-`GET /v1/markers` (device, client) → `{ markers[] }` · `POST /v1/markers` (admin) `{ id, family?, size_m?, description? }`.
+`GET /v1/markers` (device, client, user) → `{ markers[] }` · `POST /v1/markers` (admin) `{ id, family?, size_m?, description? }`.
 
 ### Merge jobs
 | Method & path | Role | Notes |
 |---|---|---|
-| `GET /v1/merge-jobs` | device, client, worker | `status`, `session_id` |
-| `GET /v1/merge-jobs/:id` | device, client, worker | |
+| `GET /v1/merge-jobs` | device, client, user, worker | `status`, `session_id` |
+| `GET /v1/merge-jobs/:id` | device, client, user, worker | |
 | `POST /v1/merge-jobs/next` | worker | claims the oldest queued job (`{ job }` or `{ job: null }`) |
 | `POST /v1/merge-jobs/:id/claim` | worker | |
 | `POST /v1/merge-jobs/:id/complete` | worker | `{ output_map_id? , error? }` → session becomes `merged` or `failed` |

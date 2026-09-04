@@ -1,19 +1,34 @@
 import { z } from 'zod'
+import { INVITE_CODE_RE, normalizeInviteCode } from './lib/parties.js'
 
 export const uuid = z.string().uuid()
+
+/** An invite code as typed by a human: case and separators are normalised before validation. */
+export const inviteCode = z.preprocess(
+  (v) => (typeof v === 'string' ? normalizeInviteCode(v) : v),
+  z.string().regex(INVITE_CODE_RE, 'invite code must be 8 base32 characters (A-Z, 2-7)'),
+)
 
 export const originSchema = z.object({
   type: z.enum(['session-start', 'marker']),
   marker_id: z.string().min(1).optional(),
 }).refine((o) => o.type !== 'marker' || Boolean(o.marker_id), { message: 'marker origin requires marker_id' })
 
+const deviceIdentity = z.object({
+  id: uuid,
+  name: z.string().max(80).default(''),
+  platform: z.enum(['ios', 'ipados', 'web', 'worker', 'other']).default('ios'),
+})
+
 export const tokenRequest = z.object({
   access_key: z.string().min(8),
-  device: z.object({
-    id: uuid,
-    name: z.string().max(80).default(''),
-    platform: z.enum(['ios', 'ipados', 'web', 'worker', 'other']).default('ios'),
-  }).optional(),
+  device: deviceIdentity.optional(),
+})
+
+/** Google sign-in: an id token from Google Identity Services (web) or the iOS PKCE flow. */
+export const googleSignIn = z.object({
+  id_token: z.string().min(20),
+  device: deviceIdentity.optional(),
 })
 
 export const createMap = z.object({
@@ -47,6 +62,19 @@ export const createSession = z.object({
   name: z.string().min(1).max(120),
   origin: originSchema.default({ type: 'session-start' }),
   base_map_id: uuid.optional(),
+  max_participants: z.coerce.number().int().min(1).max(8).default(4),
+})
+
+export const joinSession = z.object({
+  code: inviteCode,
+  kind: z.enum(['device', 'viewer']).optional(),
+  display_name: z.string().max(80).optional(),
+})
+
+/** Body for the by-id join route; `kind` follows the token when omitted. */
+export const joinSessionById = z.object({
+  kind: z.enum(['device', 'viewer']).optional(),
+  display_name: z.string().max(80).optional(),
 })
 
 export const keyframeUploadUrls = z.object({
@@ -65,6 +93,8 @@ export const keyframeIn = z.object({
   intrinsics: z.object({ fx: z.number(), fy: z.number(), cx: z.number(), cy: z.number(), w: z.number().int(), h: z.number().int() }),
   tracking_state: z.enum(['normal', 'limited', 'relocalizing', 'not_available']).default('normal'),
   world_mapping_status: z.string().default('unknown'),
+  /** False while the device has not yet seen the marker, so the pose is not in the session origin frame. */
+  aligned: z.boolean().default(true),
   depth_ref: z.string().optional(),
   confidence_ref: z.string().optional(),
   jpeg_ref: z.string().optional(),

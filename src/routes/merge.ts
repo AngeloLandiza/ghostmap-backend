@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { db, schema } from '../db/client.js'
 import { requireAuth } from '../lib/auth.js'
+import { canEndSession } from '../lib/access.js'
 import { isAblyConfigured, publish } from '../lib/ably.js'
 import { badRequest, forbidden, notFound } from '../lib/errors.js'
 import { runMergeJob } from '../lib/gcp.js'
@@ -22,11 +23,11 @@ async function loadJob(id: string) {
  * Queue a merge of everything captured in a session (plus its base map). If CLOUD_RUN_MERGE_JOB is set the
  * Cloud Run job is started immediately; otherwise a worker polls GET /v1/merge-jobs/next.
  */
-merge.post('/v1/sessions/:id/merge', requireAuth('device'), async (c) => {
+merge.post('/v1/sessions/:id/merge', requireAuth('device', 'user'), async (c) => {
   const p = c.get('principal')
   const [session] = await db().select().from(schema.sessions).where(eq(schema.sessions.id, c.req.param('id'))).limit(1)
   if (!session) throw notFound('session')
-  if (p.role !== 'admin' && session.leaderDeviceId !== p.deviceId) throw forbidden('only the session leader can request a merge')
+  if (!canEndSession(p, session)) throw forbidden('only the party owner or leader device can request a merge')
   if (session.status === 'active') throw badRequest('end the session before merging')
   const inputs = await db().select({ id: schema.maps.id }).from(schema.maps).where(and(eq(schema.maps.sessionId, session.id), eq(schema.maps.status, 'saved')))
   const inputMapIds = inputs.map((m) => m.id)
@@ -46,7 +47,7 @@ merge.post('/v1/sessions/:id/merge', requireAuth('device'), async (c) => {
   return c.json({ job: { ...job, cloudRunExecution: execution ?? null } }, 202)
 })
 
-merge.get('/v1/merge-jobs', requireAuth('device', 'client', 'worker'), zValidator('query', listQuery), async (c) => {
+merge.get('/v1/merge-jobs', requireAuth('device', 'client', 'user', 'worker'), zValidator('query', listQuery), async (c) => {
   const q = c.req.valid('query')
   const conds = []
   if (q.status) conds.push(eq(schema.mergeJobs.status, q.status))
@@ -64,7 +65,7 @@ merge.post('/v1/merge-jobs/next', requireAuth('worker'), async (c) => {
   return c.json({ job: claimed ?? null })
 })
 
-merge.get('/v1/merge-jobs/:id', requireAuth('device', 'client', 'worker'), async (c) => {
+merge.get('/v1/merge-jobs/:id', requireAuth('device', 'client', 'user', 'worker'), async (c) => {
   return c.json({ job: await loadJob(c.req.param('id')) })
 })
 
