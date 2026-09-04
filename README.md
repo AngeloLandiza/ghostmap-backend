@@ -52,10 +52,11 @@ src/app.ts            middleware (CORS, security headers, auth, usage recording)
 src/routes/           auth, devices, maps, sessions, realtime, markers, merge, admin, health
 src/lib/              auth (JWT), google (id tokens), access (ownership), parties (invite codes, cap,
                       colours), gcs, ably, gcp (billing, pricing, cloud run), newrelic, usage,
-                      usageEvents (cost counters), costs/ (pricing, usage, engine, projection), cache, errors
+                      usageEvents (cost counters), costs/ (pricing, usage, engine, projection), cache,
+                      errors, validate (zValidator wrapped so failed validation uses the same error envelope)
 src/db/               drizzle schema, Neon client, SQL migrations
 src/schemas.ts        request validation
-scripts/              migrate.ts, smoke.sh
+scripts/              migrate.ts, sync-migrations.ts, smoke.sh, vercel-env.sh, vercel-env-apply.sh
 test/                 unit tests (vitest.config.ts) — no database, run by `npm test`
 test/e2e/             E2E suite (vitest.e2e.config.ts) against a live deployment — run by `npm run test:e2e`
 docs/                 API.md, TESTING.md and setup guides

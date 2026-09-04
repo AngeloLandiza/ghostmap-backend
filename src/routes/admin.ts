@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
+import { zValidator } from '../lib/validate.js'
 import { desc, gte, sql } from 'drizzle-orm'
 import { db, schema } from '../db/client.js'
 import { requireAuth } from '../lib/auth.js'

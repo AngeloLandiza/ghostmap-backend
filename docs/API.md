@@ -1,6 +1,6 @@
 # API reference
 
-Base URL: your Vercel deployment (e.g. `https://ghostmap-backend.vercel.app`). All bodies and responses are JSON. Errors are `{ "error": { "code", "message", "details?" } }` with codes `bad_request` 400, `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `session_full` 409, `session_ended` 410, `not_configured` 501, `upstream_error` 502, `internal` 500.
+Base URL: your Vercel deployment (e.g. `https://ghostmap-backend.vercel.app`). All bodies and responses are JSON. Errors are `{ "error": { "code", "message", "details?" } }` with codes `bad_request` 400 (includes every failed body/query validation — `details` carries the zod issues), `unauthorized` 401, `forbidden` 403, `not_found` 404, `conflict` 409, `session_full` 409, `session_ended` 410, `not_configured` 501, `upstream_error` 502, `internal` 500, plus the framework's own `http_error` 400 for a request the JSON parser itself rejects (e.g. malformed JSON body, before validation ever runs).
 
 ## Authentication
 
@@ -62,7 +62,7 @@ A map is a finished on-device capture (the Ghostmap app's map folder). Files: `m
 
 An `uploads[]` entry: `{ path, url, method: "PUT"|"POST", headers, expires_at, resumable }`. For `PUT`, send the file body with the listed headers. For resumable (`cloud.ply`, `keyframes.bin`): `POST` with the listed headers and an empty body, read the `Location` header from GCS, then `PUT` the bytes to that location (optionally in chunks with `Content-Range`).
 
-Map record fields: `id, name, version, parent_map_id, session_id, device_id, owner_user_id, frame, origin, status (uploading|saved|failed|deleted), manifest, point_count, keyframe_count, bbox, duration_s, size_bytes, files[], created_at, finalized_at`.
+Map record fields (the row as stored — camelCase, not the snake_case of request bodies): `id, name, version, parentMapId, sessionId, deviceId, ownerUserId, frame, origin, status (uploading|saved|failed|deleted), manifest, pointCount, keyframeCount, bbox, durationS, sizeBytes, files[], createdAt, finalizedAt`.
 
 ## Parties (collaborative sessions)
 
@@ -108,7 +108,7 @@ Realtime channel `session:<id>` messages: `keyframes` `{ device_id, user_id, col
 | `POST /v1/merge-jobs/:id/claim` | worker | |
 | `POST /v1/merge-jobs/:id/complete` | worker | `{ output_map_id? , error? }` → session becomes `merged` or `failed` |
 
-Job fields: `id, session_id, status (queued|running|succeeded|failed), requested_by, input_map_ids[], output_map_id, error, cloud_run_execution, worker, created_at, started_at, finished_at`.
+Job fields (the row as stored — camelCase): `id, sessionId, status (queued|running|succeeded|failed), requestedBy, inputMapIds[], outputMapId, error, cloudRunExecution, worker, createdAt, startedAt, finishedAt`.
 
 ## Admin (`ADMIN_API_KEY` or admin JWT)
 

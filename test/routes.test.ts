@@ -48,6 +48,17 @@ describe('routes (no database needed)', () => {
     expect(res.status).toBe(400)
   })
 
+  it('renders zValidator failures in the documented { error: { code, message, details } } envelope', async () => {
+    const body = await (await app.request('/v1/auth/token', json({}))).json()
+    expect(body.error.code).toBe('bad_request')
+    expect(typeof body.error.message).toBe('string')
+    expect(Array.isArray(body.error.details)).toBe(true)
+    expect(body.success).toBeUndefined() // not zod-validator's own { success, error: ZodError } shape
+
+    const q = await (await app.request('/admin/costs/projection?mappers=lots', { headers: { Authorization: 'Bearer admin-key-1234' } })).json()
+    expect(q.error.code).toBe('bad_request')
+  })
+
   it('rejects unknown access keys', async () => {
     const res = await app.request('/v1/auth/token', json({ access_key: 'not-a-key' }))
     expect(res.status).toBe(401)
